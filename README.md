@@ -70,7 +70,7 @@ the Lineage-derived version-1 table, preserving existing update rows through sch
 For branch `{branch}` and device `{device}`, Updater fetches:
 
 ```text
-https://raw.githubusercontent.com/PixelOS-AOSP/official_devices/{branch}/API/updater/{device}.json
+https://raw.githubusercontent.com/raebaexxx/pixelos-ota/{branch}/API/updater/{device}.json
 ```
 
 `API/updater/{device}.json` uses the strict schema below. The legacy `response` wrapper and its
@@ -169,7 +169,7 @@ checks filename, timestamp, patch level, SDK level, `ota_property_files`, size, 
 The main screen loads Markdown from:
 
 ```text
-https://raw.githubusercontent.com/PixelOS-AOSP/official_devices/{branch}/API/updater/changelogs/{device}.md
+https://raw.githubusercontent.com/raebaexxx/pixelos-ota/{branch}/API/updater/changelogs/{device}.md
 ```
 
 The app shows explicit loading, empty, failure, and loaded states. Responses must be successful,
