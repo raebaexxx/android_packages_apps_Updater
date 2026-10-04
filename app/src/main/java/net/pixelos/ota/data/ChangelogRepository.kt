@@ -59,11 +59,16 @@ class ChangelogRepository(private val context: Context) {
             if (contentLength > MAX_RESPONSE_BYTES) {
                 throw IOException("Changelog is too large: $contentLength bytes")
             }
-            val bytes = body.source().readByteArray(MAX_RESPONSE_BYTES + 1)
-            if (bytes.size > MAX_RESPONSE_BYTES) {
+            // readByteArray(count) requires exactly count bytes and raises
+            // EOFException on a shorter body, which is every changelog below
+            // the 256 KiB limit. Probe with request() and then read what is
+            // actually there, the same way UpdatesNetworkDataSource does.
+            val source = body.source()
+            val hasMore = source.request(MAX_RESPONSE_BYTES + 1)
+            if (hasMore) {
                 throw IOException("Changelog exceeds $MAX_RESPONSE_BYTES bytes")
             }
-            bytes.decodeToString().trim()
+            source.buffer.readByteArray().decodeToString().trim()
         }
 
         cachedKey = key
