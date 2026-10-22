@@ -21,7 +21,7 @@
     <!-- Placeholders: {branch} is net.pixelos.version; {device} is ro.custom.device. -->
     <string name="updater_server_url" translatable="false">https://raw.githubusercontent.com/raebaexxx/pixelos-ota/{branch}/API/updater/{device}.json</string>
     <string name="changelog_url" translatable="false">https://raw.githubusercontent.com/raebaexxx/pixelos-ota/{branch}/API/updater/changelogs/{device}.md</string>
-    <string name="certified_prop_url" translatable="false">https://raw.githubusercontent.com/raebaexxx/pixelos-ota/{branch}/API/updater/CertifiedProps/certified_build_props.apk</string>
+    <string name="certified_prop_url" translatable="false">https://raw.githubusercontent.com/PixelOS-AOSP/official_devices/{branch}/API/updater/CertifiedProps/certified_build_props.json</string>
 
     <string name="verification_failed_notification">Verification failed</string>
     <string name="verifying_download_notification">Verifying update</string>
@@ -122,16 +122,15 @@
 
     <string name="play_integrity_header">Play Integrity</string>
     <string name="text_download_size_unknown">Unknown</string>
-    <string name="certified_prop_overlay_name" translatable="false">net.pixelos.certifiedprops.overlay</string>
     <string name="certified_prop_status">Certified properties status</string>
     <string name="certified_prop_check">Check for update</string>
     <string name="certified_prop_checking">Checking for certified properties update</string>
     <string name="certified_prop_downloading">Downloading certified properties update</string>
     <string name="certified_prop_download_failed">Unable to fetch properties from the server</string>
-    <string name="certified_prop_available">Download and install</string>
+    <string name="certified_prop_available">Download and apply</string>
     <string name="certified_prop_install_success">Reboot to apply update</string>
-    <string name="certified_prop_install_failed">Failed to install</string>
-    <string name="certified_prop_invalid_package">Downloaded package is invalid</string>
+    <string name="certified_prop_install_failed">Failed to apply</string>
+    <string name="certified_prop_invalid_data">Downloaded properties are invalid</string>
     <string name="certified_prop_info" formatted="false">Installed version: %s\n</string>
     <string name="certified_prop_remote" formatted="false">Latest version: %s</string>
 

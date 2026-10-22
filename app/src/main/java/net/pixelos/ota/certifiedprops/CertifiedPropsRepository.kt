@@ -5,59 +5,54 @@
 
 package net.pixelos.ota.certifiedprops
 
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageInfo
-import android.content.pm.PackageInstaller
-import android.content.pm.PackageManager
+import android.provider.Settings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
-import net.pixelos.ota.PackageInstallerStatusReceiver
 import net.pixelos.ota.R
 import net.pixelos.ota.deviceinfo.DeviceInfoUtils
 import net.pixelos.ota.download.APKDownloader
+import org.json.JSONException
+import org.json.JSONObject
 import java.io.File
-import java.io.FileInputStream
 
 enum class CertifiedPropsError {
     DOWNLOAD_FAILED,
     INSTALL_FAILED,
-    INVALID_PACKAGE,
+    INVALID_DATA,
 }
 
 sealed interface CertifiedPropsState {
-    val installedVersion: Long
+    val installedVersion: String
 
-    data class Idle(override val installedVersion: Long) : CertifiedPropsState
-    data class Checking(override val installedVersion: Long) : CertifiedPropsState
+    data class Idle(override val installedVersion: String) : CertifiedPropsState
+    data class Checking(override val installedVersion: String) : CertifiedPropsState
     data class UpToDate(
-        override val installedVersion: Long,
-        val remoteVersion: Long,
+        override val installedVersion: String,
+        val remoteVersion: String,
     ) : CertifiedPropsState
     data class UpdateAvailable(
-        override val installedVersion: Long,
-        val remoteVersion: Long,
+        override val installedVersion: String,
+        val remoteVersion: String,
     ) : CertifiedPropsState
     data class Installing(
-        override val installedVersion: Long,
-        val remoteVersion: Long,
+        override val installedVersion: String,
+        val remoteVersion: String,
     ) : CertifiedPropsState
-    data class Installed(override val installedVersion: Long) : CertifiedPropsState
+    data class Installed(override val installedVersion: String) : CertifiedPropsState
     data class Error(
-        override val installedVersion: Long,
+        override val installedVersion: String,
         val error: CertifiedPropsError,
     ) : CertifiedPropsState
 }
 
 class CertifiedPropsRepository(private val context: Context) {
-    private val packageName = context.getString(R.string.certified_prop_overlay_name)
-    private val apkPath = File(context.getExternalFilesDir(null), APK_FILE_NAME).absolutePath
+    private val propsPath = File(context.getExternalFilesDir(null), PROPS_FILE_NAME).absolutePath
 
     private val _state = MutableStateFlow<CertifiedPropsState>(
-        CertifiedPropsState.Idle(getLocalVersion())
+        CertifiedPropsState.Idle(getInstalledProps()?.version.orEmpty())
     )
     val state = _state.asStateFlow()
 
@@ -68,15 +63,16 @@ class CertifiedPropsRepository(private val context: Context) {
             return
         }
 
-        val installedVersion = getLocalVersion()
+        val installed = getInstalledProps()
+        val installedVersion = installed?.version.orEmpty()
         _state.value = CertifiedPropsState.Checking(installedVersion)
 
-        val file = File(apkPath)
+        val file = File(propsPath)
         if (file.exists()) file.delete()
 
         val url = context.getString(R.string.certified_prop_url)
             .replace("{branch}", DeviceInfoUtils.otaBranch)
-        if (!APKDownloader.downloadApk(apkPath, url)) {
+        if (!APKDownloader.downloadApk(propsPath, url)) {
             _state.value = CertifiedPropsState.Error(
                 installedVersion,
                 CertifiedPropsError.DOWNLOAD_FAILED,
@@ -84,22 +80,27 @@ class CertifiedPropsRepository(private val context: Context) {
             return
         }
 
-        val packageInfo = withContext(Dispatchers.IO) { getPackageInfo(apkPath) }
-        if (packageInfo == null || packageInfo.packageName != packageName) {
+        val remote = withContext(Dispatchers.IO) {
+            try {
+                parseProps(file.readText())
+            } catch (_: Exception) {
+                null
+            }
+        }
+        if (remote == null) {
             file.delete()
             _state.value = CertifiedPropsState.Error(
                 installedVersion,
-                CertifiedPropsError.INVALID_PACKAGE,
+                CertifiedPropsError.INVALID_DATA,
             )
             return
         }
 
-        val remoteVersion = packageInfo.longVersionCode
-        _state.value = if (remoteVersion > installedVersion) {
-            CertifiedPropsState.UpdateAvailable(installedVersion, remoteVersion)
-        } else {
+        _state.value = if (installed != null && installed.isSameAs(remote)) {
             file.delete()
-            CertifiedPropsState.UpToDate(installedVersion, remoteVersion)
+            CertifiedPropsState.UpToDate(installedVersion, remote.version)
+        } else {
+            CertifiedPropsState.UpdateAvailable(installedVersion, remote.version)
         }
     }
 
@@ -110,8 +111,23 @@ class CertifiedPropsRepository(private val context: Context) {
             update.remoteVersion,
         )
 
-        val installed = withContext(Dispatchers.IO) { installApk(apkPath) }
-        _state.value = if (installed) {
+        val applied = withContext(Dispatchers.IO) {
+            try {
+                val file = File(propsPath)
+                val props = parseProps(file.readText()) ?: return@withContext false
+                val ok = Settings.Secure.putString(
+                    context.contentResolver,
+                    Settings.Secure.PIF_DATA,
+                    props.json,
+                )
+                if (ok) file.delete()
+                ok
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        _state.value = if (applied) {
             CertifiedPropsState.Installed(update.remoteVersion)
         } else {
             CertifiedPropsState.Error(
@@ -121,50 +137,54 @@ class CertifiedPropsRepository(private val context: Context) {
         }
     }
 
-    private fun getPackageInfo(path: String): PackageInfo? =
-        context.packageManager.getPackageArchiveInfo(path, 0)
-
-    private fun getLocalVersion(): Long {
-        return try {
-            val packageInfo = context.packageManager.getPackageInfo(
-                packageName,
-                PackageManager.MATCH_SYSTEM_ONLY,
+    private fun getInstalledProps(): Props? {
+        val json = try {
+            Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.PIF_DATA,
+            ) ?: Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.FETCHED_PIF,
             )
-            packageInfo.longVersionCode
-        } catch (_: PackageManager.NameNotFoundException) {
-            -1
+        } catch (_: Exception) {
+            null
+        } ?: return null
+
+        return parseProps(json)
+    }
+
+    private fun parseProps(json: String): Props? {
+        return try {
+            val obj = JSONObject(json)
+            val fingerprint = obj.optString("FINGERPRINT")
+            if (fingerprint.isEmpty()) {
+                null
+            } else {
+                val release = obj.optString("VERSION.RELEASE")
+                val incremental = obj.optString("VERSION.INCREMENTAL")
+                val version = when {
+                    release.isNotEmpty() && incremental.isNotEmpty() -> "$release ($incremental)"
+                    incremental.isNotEmpty() -> incremental
+                    else -> fingerprint
+                }
+                Props(json, fingerprint, incremental, version)
+            }
+        } catch (_: JSONException) {
+            null
         }
     }
 
-    private fun installApk(path: String): Boolean {
-        return try {
-            val packageInstaller = context.packageManager.packageInstaller
-            val sessionParams =
-                PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-
-            val sessionId = packageInstaller.createSession(sessionParams)
-            val session = packageInstaller.openSession(sessionId)
-
-            FileInputStream(File(path)).use { inputStream ->
-                session.openWrite("app_install", 0, -1).use { outputStream ->
-                    inputStream.copyTo(outputStream)
-                    session.fsync(outputStream)
-                }
-            }
-            val receiverIntent = Intent(context, PackageInstallerStatusReceiver::class.java)
-            val flags = PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-            val receiverPendingIntent =
-                PendingIntent.getBroadcast(context, 0, receiverIntent, flags)
-            session.commit(receiverPendingIntent.intentSender)
-
-            session.close()
-            true
-        } catch (_: Exception) {
-            false
-        }
+    private data class Props(
+        val json: String,
+        val fingerprint: String,
+        val incremental: String,
+        val version: String,
+    ) {
+        fun isSameAs(other: Props): Boolean =
+            fingerprint == other.fingerprint && incremental == other.incremental
     }
 
     private companion object {
-        const val APK_FILE_NAME = "prop.apk"
+        const val PROPS_FILE_NAME = "props.json"
     }
 }

@@ -36,7 +36,6 @@ import net.pixelos.ota.data.UserPreferencesRepository
 import net.pixelos.ota.deviceinfo.DeviceInfoUtils
 import net.pixelos.ota.util.BatteryMonitor
 import java.io.File
-import java.util.Locale
 
 @Composable
 fun PreferencesScreen() {
@@ -210,19 +209,19 @@ private fun CertifiedPropsPreferences(
 ) {
     val state by repository.state.collectAsStateWithLifecycle()
     val unknown = stringResource(R.string.text_download_size_unknown)
-    val installedVersion = formatCertifiedPropsVersion(state.installedVersion, unknown)
+    val installedVersion = state.installedVersion.ifEmpty { unknown }
     val remoteVersion = when (val currentState = state) {
         is CertifiedPropsState.UpToDate -> currentState.remoteVersion
         is CertifiedPropsState.UpdateAvailable -> currentState.remoteVersion
         is CertifiedPropsState.Installing -> currentState.remoteVersion
-        else -> -1
-    }
+        else -> ""
+    }.ifEmpty { unknown }
     val versionSummary = stringResource(
         R.string.certified_prop_info,
         installedVersion,
     ) + stringResource(
         R.string.certified_prop_remote,
-        formatCertifiedPropsVersion(remoteVersion, unknown),
+        remoteVersion,
     )
     val summary = when (val currentState = state) {
         is CertifiedPropsState.Checking -> stringResource(R.string.certified_prop_checking)
@@ -233,8 +232,8 @@ private fun CertifiedPropsPreferences(
                 stringResource(R.string.certified_prop_download_failed)
             CertifiedPropsError.INSTALL_FAILED ->
                 stringResource(R.string.certified_prop_install_failed)
-            CertifiedPropsError.INVALID_PACKAGE ->
-                stringResource(R.string.certified_prop_invalid_package)
+            CertifiedPropsError.INVALID_DATA ->
+                stringResource(R.string.certified_prop_invalid_data)
         }
         else -> versionSummary
     }
@@ -263,17 +262,6 @@ private fun CertifiedPropsPreferences(
                 }
             }
         })
-    }
-}
-
-private fun formatCertifiedPropsVersion(version: Long, unknown: String): String {
-    return if (version > 0) {
-        val versionString = version.toString().padStart(3, '0')
-        val major = versionString.dropLast(2).toInt()
-        val minor = versionString.takeLast(2).toInt()
-        String.format(Locale.getDefault(), "%d.%02d", major, minor)
-    } else {
-        unknown
     }
 }
 
