@@ -83,6 +83,8 @@ public class UpdatesActivity extends UpdatesScaffoldActivity implements UpdateIm
     @Override
     public void onStart() {
         super.onStart();
+        mViewModel.fetchUpdates();
+
         Intent intent = new Intent(this, UpdaterService.class);
         startService(intent);
         bindService(intent, mConnection, Context.BIND_AUTO_CREATE);

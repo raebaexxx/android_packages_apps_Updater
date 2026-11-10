@@ -69,12 +69,7 @@ class UpdatesViewModel(
         viewModelScope.launch {
             repository.observeLocalUpdates().collect { updates ->
                 _uiState.update { it.copy(updates = updates) }
-                // Load the changelog as soon as any update is known, not only
-                // when one is flagged available online. isAvailableOnline lives
-                // in memory only and is set by UpdaterController after a
-                // successful feed fetch, so a build that already has its entry
-                // in the database would never show the changelog.
-                if (updates.isNotEmpty()) {
+                if (updates.any { it.downloadId != Update.LOCAL_ID && it.downloadUrl != null }) {
                     loadChangelog()
                 }
             }
@@ -105,9 +100,11 @@ class UpdatesViewModel(
                     appStateRepository.setLastCheckedTimestamp(fetchedAt)
                 }
                 _uiState.update { it.copy(isCheckingForUpdates = false) }
-                // Same reasoning as in the observeLocalUpdates() collector:
-                // do not gate the changelog on the in-memory online flag.
-                loadChangelog()
+                if (_uiState.value.updates.any {
+                    it.downloadId != Update.LOCAL_ID && it.downloadUrl != null
+                }) {
+                    loadChangelog()
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to fetch updates", e)
                 _uiState.update {

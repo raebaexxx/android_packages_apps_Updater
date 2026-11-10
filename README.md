@@ -70,7 +70,7 @@ the Lineage-derived version-1 table, preserving existing update rows through sch
 For branch `{branch}` and device `{device}`, Updater fetches:
 
 ```text
-https://raw.githubusercontent.com/raebaexxx/pixelos-ota/{branch}/API/updater/{device}.json
+https://raw.githubusercontent.com/PixelOS-AOSP/official_devices/{branch}/API/updater/{device}.json
 ```
 
 `API/updater/{device}.json` uses the strict schema below. The legacy `response` wrapper and its
@@ -116,9 +116,12 @@ A release may carry a paired incremental. The full entry then also has an
 ]
 ```
 
-The app attempts the delta first on A/B devices and automatically falls back
-to the paired full entry when verification or installation fails;
-update_engine itself rejects wrong-source deltas.
+The app attempts the delta first when the server-side payload applicability
+check succeeds and automatically falls back to the paired full entry when
+verification or installation fails. For A/B devices, `ota_property_files`
+must include `payload_metadata.bin`, `payload.bin`, and
+`payload_properties.txt`; the app fetches the metadata range and asks
+UpdateEngine to verify that the installed partitions match the delta source.
 
 The runtime contract is:
 
@@ -138,6 +141,8 @@ The runtime contract is:
 - `type`: retained as `ci` for feed compatibility; it is not used to filter updates.
 - `version`: non-blank PixelOS release version.
 - `additional_images`: optional website metadata ignored by the updater app.
+- `incremental`: optional array with exactly one source-specific OTA file, supported only when
+  its payload metadata can be checked. Keep the full artifact as the fallback.
 
 The response body is capped at 1 MiB, redirects are disabled, and a non-successful HTTP response,
 invalid JSON, or any invalid entry rejects the whole response. Unknown JSON fields are ignored by
@@ -169,7 +174,7 @@ checks filename, timestamp, patch level, SDK level, `ota_property_files`, size, 
 The main screen loads Markdown from:
 
 ```text
-https://raw.githubusercontent.com/raebaexxx/pixelos-ota/{branch}/API/updater/changelogs/{device}.md
+https://raw.githubusercontent.com/PixelOS-AOSP/official_devices/{branch}/API/updater/changelogs/{device}.md
 ```
 
 The app shows explicit loading, empty, failure, and loaded states. Responses must be successful,
